@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rewrite-ledger-workbench"
+version = "0.1.0"
+description = "Manual-first PySide6 workbench for iterative sentence rewrite ledgers."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "PySide6>=6.7",
+]
+
+[project.scripts]
+rewrite-ledger-workbench = "app.main:main"
+
+[tool.setuptools.packages.find]
+include = ["app*"]

@@ -1,0 +1,102 @@
+"""Center panel for sentence review and manual candidate entry."""
+
+from __future__ import annotations
+
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import (
+    QFormLayout,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QSpinBox,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+
+class RewritePanel(QWidget):
+    accept_requested = Signal(str)
+    unchanged_requested = Signal()
+    review_requested = Signal()
+    reject_requested = Signal()
+    previous_requested = Signal()
+    next_requested = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.original = QTextEdit(readOnly=True)
+        self.current = QTextEdit(readOnly=True)
+        self.candidates: dict[str, QTextEdit] = {}
+        self.scores: dict[str, QSpinBox] = {}
+        self.reasons: dict[str, QLineEdit] = {}
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Original sentence"))
+        layout.addWidget(self.original)
+        layout.addWidget(QLabel("Current working sentence"))
+        layout.addWidget(self.current)
+
+        for label in ["A", "B", "C"]:
+            group = QGroupBox(f"Rewrite candidate {label}")
+            form = QFormLayout(group)
+            editor = QTextEdit()
+            score = QSpinBox()
+            score.setRange(0, 100)
+            reason = QLineEdit()
+            form.addRow("Text", editor)
+            form.addRow("Score", score)
+            form.addRow("Reason", reason)
+            self.candidates[label] = editor
+            self.scores[label] = score
+            self.reasons[label] = reason
+            layout.addWidget(group)
+
+        button_grid = QGridLayout()
+        for column, label in enumerate(["A", "B", "C"]):
+            button = QPushButton(f"Accept {label}")
+            button.clicked.connect(lambda _checked=False, choice=label: self.accept_requested.emit(choice))
+            button_grid.addWidget(button, 0, column)
+        self.unchanged_button = QPushButton("Leave unchanged")
+        self.reject_button = QPushButton("Reject candidates")
+        self.review_button = QPushButton("Needs David Review")
+        button_grid.addWidget(self.unchanged_button, 1, 0)
+        button_grid.addWidget(self.reject_button, 1, 1)
+        button_grid.addWidget(self.review_button, 1, 2)
+        layout.addLayout(button_grid)
+
+        nav = QHBoxLayout()
+        self.previous_button = QPushButton("Previous sentence")
+        self.next_button = QPushButton("Next sentence")
+        nav.addWidget(self.previous_button)
+        nav.addWidget(self.next_button)
+        layout.addLayout(nav)
+
+        self.unchanged_button.clicked.connect(self.unchanged_requested.emit)
+        self.reject_button.clicked.connect(self.reject_requested.emit)
+        self.review_button.clicked.connect(self.review_requested.emit)
+        self.previous_button.clicked.connect(self.previous_requested.emit)
+        self.next_button.clicked.connect(self.next_requested.emit)
+
+    def set_sentence(self, original: str, current: str) -> None:
+        self.original.setPlainText(original)
+        self.current.setPlainText(current)
+        for label in ["A", "B", "C"]:
+            self.candidates[label].setPlainText(current)
+            self.scores[label].setValue(0)
+            self.reasons[label].clear()
+
+    def candidate_payloads(self) -> list[dict]:
+        return [
+            {
+                "label": label,
+                "text": self.candidates[label].toPlainText().strip(),
+                "score": self.scores[label].value(),
+                "reason": self.reasons[label].text().strip(),
+                "risks": [],
+            }
+            for label in ["A", "B", "C"]
+        ]
