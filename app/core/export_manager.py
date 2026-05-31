@@ -32,7 +32,7 @@ class ExportManager:
         lines = ["# Rewrite Decisions", ""]
         for entry in ledger.all_entries():
             lines.extend([
-                f"## {entry.sentence_id} — {entry.status}",
+                f"## {entry.sentence_id} - {entry.status}",
                 f"- Section: {entry.section}",
                 f"- Selected: {entry.selected or 'None'}",
                 f"- Meaning drift risk: {entry.meaning_drift_risk}",
@@ -56,7 +56,7 @@ class ExportManager:
             rejected = [candidate for candidate in entry.candidates if candidate.label != entry.selected]
             if not rejected:
                 continue
-            lines.append(f"## {entry.sentence_id} — {entry.section}")
+            lines.append(f"## {entry.sentence_id} - {entry.section}")
             for candidate in rejected:
                 lines.extend([
                     f"### Candidate {candidate.label}",

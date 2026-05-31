@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.core.change_guard import analyze_candidate
+
 
 class RewritePanel(QWidget):
     accept_requested = Signal(str)
@@ -63,10 +65,17 @@ class RewritePanel(QWidget):
         self.unchanged_button = QPushButton("Leave unchanged")
         self.reject_button = QPushButton("Reject candidates")
         self.review_button = QPushButton("Needs David Review")
+        self.scan_risks_button = QPushButton("Scan candidate risks")
         button_grid.addWidget(self.unchanged_button, 1, 0)
         button_grid.addWidget(self.reject_button, 1, 1)
         button_grid.addWidget(self.review_button, 1, 2)
+        button_grid.addWidget(self.scan_risks_button, 2, 0, 1, 3)
         layout.addLayout(button_grid)
+
+        self.risk_preview = QTextEdit(readOnly=True)
+        self.risk_preview.setPlaceholderText("Candidate risk warnings will appear here.")
+        layout.addWidget(QLabel("Candidate risk preview"))
+        layout.addWidget(self.risk_preview)
 
         nav = QHBoxLayout()
         self.previous_button = QPushButton("Previous sentence")
@@ -78,6 +87,7 @@ class RewritePanel(QWidget):
         self.unchanged_button.clicked.connect(self.unchanged_requested.emit)
         self.reject_button.clicked.connect(self.reject_requested.emit)
         self.review_button.clicked.connect(self.review_requested.emit)
+        self.scan_risks_button.clicked.connect(self.scan_candidate_risks)
         self.previous_button.clicked.connect(self.previous_requested.emit)
         self.next_button.clicked.connect(self.next_requested.emit)
 
@@ -88,15 +98,34 @@ class RewritePanel(QWidget):
             self.candidates[label].setPlainText(current)
             self.scores[label].setValue(0)
             self.reasons[label].clear()
+        self.risk_preview.clear()
 
     def candidate_payloads(self) -> list[dict]:
+        original = self.original.toPlainText().strip()
         return [
-            {
-                "label": label,
-                "text": self.candidates[label].toPlainText().strip(),
-                "score": self.scores[label].value(),
-                "reason": self.reasons[label].text().strip(),
-                "risks": [],
-            }
+            self._candidate_payload(label, original)
             for label in ["A", "B", "C"]
         ]
+
+    def _candidate_payload(self, label: str, original: str) -> dict:
+        text = self.candidates[label].toPlainText().strip()
+        report = analyze_candidate(original, text) if text else None
+        return {
+            "label": label,
+            "text": text,
+            "score": self.scores[label].value(),
+            "reason": self.reasons[label].text().strip(),
+            "risks": report.warnings if report else [],
+        }
+
+    def scan_candidate_risks(self) -> None:
+        lines: list[str] = []
+        for payload in self.candidate_payloads():
+            warnings = payload["risks"]
+            lines.append(f"Candidate {payload['label']}:")
+            if warnings:
+                lines.extend(f"- {warning}" for warning in warnings)
+            else:
+                lines.append("- No guard warnings.")
+            lines.append("")
+        self.risk_preview.setPlainText("\n".join(lines).strip())

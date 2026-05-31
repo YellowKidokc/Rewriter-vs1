@@ -6,7 +6,26 @@ import re
 from dataclasses import dataclass, field
 
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
-SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'“‘(\[])")
+SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'\u201c\u2018(\[])")
+
+ABBREVIATIONS = (
+    "Mr.",
+    "Mrs.",
+    "Ms.",
+    "Dr.",
+    "Prof.",
+    "Rev.",
+    "St.",
+    "Mt.",
+    "Fig.",
+    "Eq.",
+    "e.g.",
+    "i.e.",
+    "etc.",
+    "vs.",
+    "U.S.",
+    "U.K.",
+)
 
 
 @dataclass
@@ -28,7 +47,26 @@ def split_sentence_text(text: str) -> list[str]:
     normalized = re.sub(r"[ \t]+", " ", text.strip())
     if not normalized:
         return []
-    return [part.strip() for part in SENTENCE_RE.split(normalized) if part.strip()]
+    protected, replacements = _protect_abbreviations(normalized)
+    parts = [part.strip() for part in SENTENCE_RE.split(protected) if part.strip()]
+    return [_restore_abbreviations(part, replacements) for part in parts]
+
+
+def _protect_abbreviations(text: str) -> tuple[str, dict[str, str]]:
+    replacements: dict[str, str] = {}
+    protected = text
+    for index, abbreviation in enumerate(ABBREVIATIONS):
+        token = f"__ABBR_{index}__"
+        replacements[token] = abbreviation
+        protected = protected.replace(abbreviation, token)
+    return protected, replacements
+
+
+def _restore_abbreviations(text: str, replacements: dict[str, str]) -> str:
+    restored = text
+    for token, abbreviation in replacements.items():
+        restored = restored.replace(token, abbreviation)
+    return restored
 
 
 def split_document(text: str) -> list[SectionRecord]:

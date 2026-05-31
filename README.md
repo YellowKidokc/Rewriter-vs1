@@ -19,6 +19,7 @@ This prototype can:
 5. Accept a candidate, reject the current candidates, leave a sentence unchanged, or mark it as needing David review.
 6. Update the reconstructed draft preview after accepted rewrites.
 7. Export the rewrite ledger, reconstructed draft, rejected alternatives, and audit report.
+8. Flag risky manual candidates that change numbers, dates, citations, protected terms, Scripture references, or claim strength.
 
 LLM rewrite generation is intentionally not connected yet. The ledger and draft-state loop should remain stable before any model integration is added.
 
@@ -82,7 +83,7 @@ rewrite-ledger-workbench
 1. Click **Open file** and choose a Markdown, text, or HTML document.
 2. Select a sentence from the left panel.
 3. Enter manual candidates A/B/C in the center panel.
-4. Add a 0–100 score and reason for each candidate as needed.
+4. Add a 0-100 score and reason for each candidate as needed.
 5. Click **Accept A/B/C**, **Reject candidates**, **Leave unchanged**, or **Needs David Review**.
 6. The right-panel preview updates immediately when a rewrite is accepted.
 7. Click **Export ledger + draft** to write outputs.
@@ -121,3 +122,24 @@ python app/audits/combined_theophysics_paper_auditor.py examples/sample_paper.md
 - Do not rewrite the whole paper at once.
 - Do not overwrite the original file.
 - Flag risky changes instead of hiding them.
+
+## Rewrite guardrails
+
+The workbench includes a lightweight candidate guard in `app/core/change_guard.py`.
+
+It does not decide whether a rewrite is good. It flags changes that need slower review:
+
+- changed numbers or years
+- added or removed citations
+- added or removed Scripture references
+- added or removed protected terms
+- claim-strength jumps such as `suggests` becoming `proves`
+- candidates that are much shorter than the original
+
+Accepted candidates carry the detected risk into the rewrite ledger as `meaning_drift_risk`, `claim_strength_risk`, and candidate `risks`.
+
+Run core tests with:
+
+```bash
+python -m unittest discover tests
+```

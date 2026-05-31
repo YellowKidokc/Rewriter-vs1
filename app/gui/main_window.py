@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QSplitter, QVBoxLayout, QWidget
 
+from app.core.change_guard import analyze_candidate
 from app.core.document_loader import load_document
 from app.core.draft_state import DraftState
 from app.core.export_manager import ExportManager
@@ -91,6 +92,7 @@ class MainWindow(QMainWindow):
         sentence = self.draft_state.sentence_by_id(self.current_sentence_id)
         current_before = self.draft_state.current_text_for(self.current_sentence_id)
         candidates = [RewriteCandidate(**payload) for payload in payloads]
+        risk_report = analyze_candidate(sentence.text, selected["text"])
         entry = RewriteLedgerEntry(
             sentence_id=sentence.id,
             section=sentence.section,
@@ -100,8 +102,8 @@ class MainWindow(QMainWindow):
             selected=label,
             status="accepted",
             reason=selected["reason"] or f"Accepted candidate {label} manually.",
-            meaning_drift_risk="low",
-            claim_strength_risk="low",
+            meaning_drift_risk=risk_report.meaning_risk,
+            claim_strength_risk=risk_report.claim_strength_risk,
         )
         self.ledger.record(entry)
         self.draft_state.apply_rewrite(sentence.id, selected["text"])
