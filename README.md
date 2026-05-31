@@ -1,123 +1,72 @@
-# Rewrite Ledger Workbench
+# Prompt Suite v2 — Architecture
 
-`rewrite-ledger-workbench` is a manual-first PySide6 desktop workbench for controlled sentence-by-sentence rewriting. It is designed as a separate tool around the existing writing-audit scripts, not as a one-shot rewriting pipeline.
+## Execution Order
 
-The central rule is:
+These prompts form a pipeline. They are not independent — each one feeds the next.
 
-> Each accepted rewrite becomes part of the working draft before the next sentence is judged.
-
-That rule keeps the workflow focused on sentence decisions, a progressive ledger, and a reconstructed draft that changes only when a user accepts a rewrite.
-
-## First milestone status
-
-This prototype can:
-
-1. Open `.md`, `.txt`, `.html`, and `.htm` files.
-2. Split documents into Markdown-style sections and sentences.
-3. Display sections and sentences in a PySide6 GUI.
-4. Let a user manually enter rewrite candidates A/B/C.
-5. Accept a candidate, reject the current candidates, leave a sentence unchanged, or mark it as needing David review.
-6. Update the reconstructed draft preview after accepted rewrites.
-7. Export the rewrite ledger, reconstructed draft, rejected alternatives, and audit report.
-
-LLM rewrite generation is intentionally not connected yet. The ledger and draft-state loop should remain stable before any model integration is added.
-
-## Repository structure
-
-```text
-app/
-  main.py
-  gui/
-    main_window.py
-    file_panel.py
-    audit_panel.py
-    rewrite_panel.py
-    preview_panel.py
-    export_panel.py
-  core/
-    document_loader.py
-    sentence_splitter.py
-    rewrite_ledger.py
-    scoring.py
-    draft_state.py
-    html_cleaner.py
-    export_manager.py
-  audits/
-    combined_theophysics_paper_auditor.py
-    gpt_adversarial_writing_audit.py
-    kimi_style_measure_first.py
-    event_coupling_scanner.py
-  prompts/
-    iterative_sentence_rewrite_ledger.md
-    claim_control_rewrite_prompt.md
-    seo_metadata_prompt.md
-outputs/
-examples/
+```
+                    ┌──────────────────────┐
+                    │  SECTION DIAGNOSIS   │  ← Run first, per section
+                    │  (section_diagnosis) │
+                    └──────────┬───────────┘
+                               │
+                    identifies priority sentences
+                               │
+                    ┌──────────▼───────────┐
+                    │  SENTENCE REWRITE    │  ← Run per sentence, in order
+                    │  (iterative_rewrite) │
+                    └──────────┬───────────┘
+                               │
+                    generates candidates A/B/C
+                               │
+                    ┌──────────▼───────────┐
+                    │  CLAIM CONTROL       │  ← Run per candidate, before acceptance
+                    │  (claim_control)     │
+                    └──────────┬───────────┘
+                               │
+                    passes or flags each candidate
+                               │
+                    ┌──────────▼───────────┐
+                    │  HUMAN DECISION      │  ← Accept / Reject / Unchanged / Review
+                    │  (the GUI)           │
+                    └──────────┬───────────┘
+                               │
+                    draft updates, next sentence
+                               │
+              ┌────────────────▼─────────────────┐
+              │  After all sentences are done:    │
+              │                                   │
+              │  SEO METADATA  ← from final draft │
+              │  HANDOFF BRIDGE ← from flow gate  │
+              └───────────────────────────────────┘
 ```
 
-The audit scripts in `app/audits/` preserve their standalone CLI behavior while also being importable by the GUI.
+## Files
 
-## Install
+| Prompt | When | What |
+|---|---|---|
+| `section_diagnosis_prompt.md` | Before sentence pass | Diagnoses section arc, flags structural issues, identifies priority sentences |
+| `iterative_sentence_rewrite_ledger.md` | Per sentence | Generates up to 3 candidates with full scoring rubric |
+| `claim_control_rewrite_prompt.md` | Per candidate | 5-check safety validation before acceptance |
+| `seo_metadata_prompt.md` | After draft complete | Generates publication metadata from final text |
+| `series_handoff_bridge_prompt.md` | After series flow gate | Generates bridge sentences for flagged transitions |
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+## Integration with Existing Code
 
-## Run the GUI
+**scoring.py** — The rewrite prompt's scoring factors map 1:1 to the `POSITIVE_LIMITS` and `PENALTY_LIMITS` already defined in `app/core/scoring.py`. When LLM integration is added, the LLM's score output should be validated against these same limits.
 
-```bash
-python -m app.main
-```
+**rewrite_ledger.py** — The JSON output format from the rewrite prompt maps directly to `RewriteLedgerEntry` and `RewriteCandidate` dataclasses. The `meaning_drift_risk` and `claim_strength_risk` fields already exist in the ledger model.
 
-or, after installing the package:
+**Series flow gate** — The handoff bridge prompt consumes the output of `03_SCORED/series-flow/run_series_flow.py`. When a handoff is flagged, the bridge prompt generates insertion candidates. After insertion, rerun the flow gate to verify the score improved.
 
-```bash
-rewrite-ledger-workbench
-```
+**Audit scripts** — The section diagnosis prompt and the existing `kimi_style_measure_first.py` + `gpt_adversarial_writing_audit.py` are complementary. The audits measure; the diagnosis interprets. Run audits first, feed their findings into the diagnosis context if available.
 
-## Manual rewrite workflow
+## What Changed from v1
 
-1. Click **Open file** and choose a Markdown, text, or HTML document.
-2. Select a sentence from the left panel.
-3. Enter manual candidates A/B/C in the center panel.
-4. Add a 0–100 score and reason for each candidate as needed.
-5. Click **Accept A/B/C**, **Reject candidates**, **Leave unchanged**, or **Needs David Review**.
-6. The right-panel preview updates immediately when a rewrite is accepted.
-7. Click **Export ledger + draft** to write outputs.
-
-## Exports
-
-Exports are written to `outputs/`:
-
-- `rewrite_decisions.json`
-- `rewrite_decisions.md`
-- `paper_reconstructed.md`
-- `paper_rejected_options.md`
-- `audit_report.md`
-
-## Audit integration
-
-The right panel includes buttons for:
-
-- measurement audit via `kimi_style_measure_first.py`
-- adversarial claim audit via `gpt_adversarial_writing_audit.py`
-
-The copied scripts can still be run directly, for example:
-
-```bash
-python app/audits/kimi_style_measure_first.py examples/sample_paper.md --out outputs/kimi_report.json
-python app/audits/gpt_adversarial_writing_audit.py examples/sample_paper.md --out outputs/adversarial_report.md
-python app/audits/combined_theophysics_paper_auditor.py examples/sample_paper.md --outdir outputs/combined
-```
-
-## Hard boundaries
-
-- Do not invent evidence.
-- Do not strengthen claims unless the source text already supports them.
-- Do not flatten the author's style into generic academic prose.
-- Do not silently change theology, math, data, names, dates, citations, or key terms.
-- Do not rewrite the whole paper at once.
-- Do not overwrite the original file.
-- Flag risky changes instead of hiding them.
+| v1 (original) | v2 (this) |
+|---|---|
+| 14-line generic instruction | Full LLM prompt with input format, output schema, scoring rubric, voice calibration, and hard boundaries |
+| 3-line claim control | 5-check validation framework with term fidelity table and severity mapping |
+| 3-line SEO stub | Structured metadata schema with concrete rules |
+| No section-level prompt | Section diagnosis with arc typing, paragraph mapping, and priority targeting |
+| No series-level prompt | Handoff bridge generator tied to the flow gate output |
